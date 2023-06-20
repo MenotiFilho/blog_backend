@@ -1,29 +1,58 @@
+/* eslint-disable import/no-extraneous-dependencies */
+/* eslint-disable no-underscore-dangle */
 /* eslint-disable consistent-return */
 const blogsRouter = require('express').Router();
+const jwt = require('jsonwebtoken');
 const Blog = require('../models/blog');
+const User = require('../models/user');
 
-blogsRouter.get('/', (request, response, next) => {
-  Blog.find({})
-    .then((blogs) => {
-      response.json(blogs);
-    })
-    .catch((error) => next(error));
+const getTokenFrom = (request) => {
+  const authorization = request.get('authorization');
+  if (authorization && authorization.startsWith('Bearer ')) {
+    return authorization.replace('Bearer ', '');
+  }
+  return null;
+};
+
+blogsRouter.get('/', async (request, response, next) => {
+  try {
+    const blogs = await Blog
+      .find({}).populate('user', { username: 1, name: 1 });
+    response.json(blogs);
+  } catch (error) {
+    next(error);
+  }
 });
+blogsRouter.post('/', async (request, response, next) => {
+  const { body } = request;
 
-blogsRouter.post('/', (request, response, next) => {
-  const { title, url } = request.body;
+  const decodedToken = jwt.verify(getTokenFrom(request), process.env.SECRET);
+  if (!decodedToken.id) {
+    return response.status(401).json({ error: 'token invalid' });
+  }
+  const user = await User.findById(decodedToken.id);
 
-  if (!title || !url) {
+  if (!body.title || !body.url) {
     return response.status(400).json({ error: 'Missing title or author' });
   }
 
-  const blog = new Blog(request.body);
+  const blog = new Blog({
+    title: body.title,
+    author: body.author,
+    url: body.url,
+    likes: body.likes,
+    user: user.id,
+  });
 
-  blog.save()
-    .then((result) => {
-      response.status(201).json(result);
-    })
-    .catch((error) => next(error));
+  try {
+    const savedBlog = await blog.save();
+    response.status(201).json(savedBlog);
+
+    user.blogs = user.blogs.concat(savedBlog._id);
+    await user.save();
+  } catch (error) {
+    next(error);
+  }
 });
 
 blogsRouter.delete('/:id', async (request, response, next) => {

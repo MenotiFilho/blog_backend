@@ -1,3 +1,4 @@
+/* eslint-disable consistent-return */
 const unknownEndpoint = (request, response) => {
   response.status(404).json({ error: 'Endpoint desconhecido' });
 };
@@ -10,6 +11,10 @@ const errorHandler = (error, request, response, next) => {
   }
 
   if (error.name === 'ValidationError') {
+    return response.status(400).json({ error: error.message });
+  }
+
+  if (error.name === 'JsonWebTokenError') {
     return response.status(400).json({ error: error.message });
   }
 
